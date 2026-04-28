@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException
-from langfuse import Langfuse
+from langfuse.callback import CallbackHandler
 
 from .chain import rag_chain, rewrite_chain, to_lc_messages
 from .config import settings
@@ -8,21 +8,16 @@ from .retriever import HybridQdrantRetriever
 
 app = FastAPI(title="IaC AI Agent", version="1.0.0")
 
-_langfuse = (
-    Langfuse(
+
+def _callbacks() -> list:
+    if not (settings.langfuse_public_key and settings.langfuse_secret_key):
+        return []
+    return [CallbackHandler(
         public_key=settings.langfuse_public_key,
         secret_key=settings.langfuse_secret_key,
         host=settings.langfuse_host,
-    )
-    if settings.langfuse_public_key and settings.langfuse_secret_key
-    else None
-)
-
-
-def _callbacks(query: str) -> list:
-    if not _langfuse:
-        return []
-    return [_langfuse.trace(name="iac-query", input={"query": query}).get_langchain_handler()]
+        trace_name="iac-query",
+    )]
 
 
 def _format_context(docs) -> str:
@@ -40,7 +35,7 @@ async def health():
 @app.post("/query", response_model=QueryResponse)
 async def query(request: QueryRequest):
     try:
-        config = {"callbacks": _callbacks(request.query)}
+        config = {"callbacks": _callbacks()}
         history = to_lc_messages(request.history)
         retriever = HybridQdrantRetriever(top_k=request.top_k)
 
