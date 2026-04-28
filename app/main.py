@@ -1,10 +1,16 @@
+import time
+import uuid
+
 from fastapi import FastAPI, HTTPException
 from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
 
 from .chain import rag_chain, rewrite_chain, to_lc_messages
 from .config import settings
-from .models import QueryRequest, QueryResponse, SearchResult
+from .models import (
+    ChatCompletionChoice, ChatCompletionRequest, ChatCompletionResponse,
+    ChatMessage, Message, QueryRequest, QueryResponse, SearchResult,
+)
 from .retriever import HybridQdrantRetriever
 
 app = FastAPI(title="IaC AI Agent", version="1.0.0")
@@ -31,6 +37,27 @@ def _format_context(docs) -> str:
     )
 
 
+async def _run_pipeline(query: str, history: list[Message], top_k: int = settings.search_top_k):
+    config = {"callbacks": _callbacks()}
+    lc_history = to_lc_messages(history)
+    retriever = HybridQdrantRetriever(top_k=top_k)
+
+    search_query = query
+    if lc_history:
+        search_query = await rewrite_chain.ainvoke(
+            {"query": query, "history": lc_history}, config=config
+        )
+
+    docs = await retriever.ainvoke(search_query, config=config)
+
+    answer = await rag_chain.ainvoke(
+        {"query": query, "context": _format_context(docs), "history": lc_history},
+        config=config,
+    ) if docs else None
+
+    return answer, docs
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
@@ -39,25 +66,9 @@ async def health():
 @app.post("/query", response_model=QueryResponse)
 async def query(request: QueryRequest):
     try:
-        config = {"callbacks": _callbacks()}
-        history = to_lc_messages(request.history)
-        retriever = HybridQdrantRetriever(top_k=request.top_k)
-
-        search_query = request.query
-        if history:
-            search_query = await rewrite_chain.ainvoke(
-                {"query": request.query, "history": history}, config=config
-            )
-
-        docs = await retriever.ainvoke(search_query, config=config)
+        answer, docs = await _run_pipeline(request.query, request.history, request.top_k)
         if not docs:
             raise HTTPException(status_code=404, detail="No relevant documents found.")
-
-        answer = await rag_chain.ainvoke(
-            {"query": request.query, "context": _format_context(docs), "history": history},
-            config=config,
-        )
-
         return QueryResponse(
             answer=answer,
             sources=[
@@ -68,6 +79,47 @@ async def query(request: QueryRequest):
                     score=doc.metadata["score"],
                 )
                 for doc in docs
+            ],
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/v1/models")
+async def list_models():
+    return {
+        "object": "list",
+        "data": [{"id": settings.llm_model, "object": "model", "owned_by": "local"}],
+    }
+
+
+@app.post("/v1/chat/completions", response_model=ChatCompletionResponse)
+async def chat_completions(request: ChatCompletionRequest):
+    try:
+        *prior, last = request.messages
+        if last.role != "user":
+            raise HTTPException(status_code=400, detail="Last message must be from a user.")
+
+        history = [
+            Message(role=m.role, content=m.content)
+            for m in prior
+            if m.role in ("user", "assistant")
+        ]
+
+        answer, docs = await _run_pipeline(last.content, history)
+        if not docs:
+            answer = "I couldn't find relevant information in the knowledge base."
+
+        return ChatCompletionResponse(
+            id=f"chatcmpl-{uuid.uuid4().hex}",
+            created=int(time.time()),
+            model=request.model or settings.llm_model,
+            choices=[
+                ChatCompletionChoice(
+                    message=ChatMessage(role="assistant", content=answer),
+                )
             ],
         )
     except HTTPException:

@@ -23,3 +23,29 @@ class SearchResult(BaseModel):
 class QueryResponse(BaseModel):
     answer: str
     sources: list[SearchResult]
+
+
+# OpenAI-compatible models for /v1/chat/completions
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class ChatCompletionRequest(BaseModel):
+    model: str = ""
+    messages: list[ChatMessage]
+    stream: bool = False
+
+
+class ChatCompletionChoice(BaseModel):
+    index: int = 0
+    message: ChatMessage
+    finish_reason: str = "stop"
+
+
+class ChatCompletionResponse(BaseModel):
+    id: str
+    object: str = "chat.completion"
+    created: int
+    model: str
+    choices: list[ChatCompletionChoice]
