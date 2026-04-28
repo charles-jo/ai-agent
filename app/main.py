@@ -91,7 +91,7 @@ async def query(request: QueryRequest):
 async def list_models():
     return {
         "object": "list",
-        "data": [{"id": settings.llm_model, "object": "model", "owned_by": "local"}],
+        "data": [{"id": "ai-agent-iac", "object": "model", "owned_by": "local"}],
     }
 
 
@@ -115,7 +115,7 @@ async def chat_completions(request: ChatCompletionRequest):
         return ChatCompletionResponse(
             id=f"chatcmpl-{uuid.uuid4().hex}",
             created=int(time.time()),
-            model=request.model or settings.llm_model,
+            model=request.model or "ai-agent-iac",
             choices=[
                 ChatCompletionChoice(
                     message=ChatMessage(role="assistant", content=answer),
