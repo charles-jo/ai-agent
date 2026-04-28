@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException
+from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
 
 from .chain import rag_chain, rewrite_chain, to_lc_messages
@@ -8,9 +9,17 @@ from .retriever import HybridQdrantRetriever
 
 app = FastAPI(title="IaC AI Agent", version="1.0.0")
 
+# Langfuse v4: must initialize a client before CallbackHandler can use it.
+# Reads LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST from env.
+_langfuse = (
+    Langfuse()
+    if settings.langfuse_public_key and settings.langfuse_secret_key
+    else None
+)
+
 
 def _callbacks() -> list:
-    if not settings.langfuse_public_key:
+    if not _langfuse:
         return []
     return [CallbackHandler(public_key=settings.langfuse_public_key)]
 
