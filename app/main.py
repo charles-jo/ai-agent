@@ -18,7 +18,7 @@ async def query(request: QueryRequest):
         results = await hybrid_search(request.query, request.top_k)
         if not results:
             raise HTTPException(status_code=404, detail="No relevant documents found.")
-        answer = await generate_response(request.query, results)
+        answer = await generate_response(request.query, results, request.history)
         return QueryResponse(answer=answer, sources=results)
     except HTTPException:
         raise

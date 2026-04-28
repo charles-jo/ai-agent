@@ -1,7 +1,7 @@
 from openai import AsyncOpenAI
 
 from .config import settings
-from .models import SearchResult
+from .models import Message, SearchResult
 
 _client = AsyncOpenAI(base_url=settings.vllm_base_url, api_key=settings.vllm_api_key)
 
@@ -19,16 +19,22 @@ def _build_context(results: list[SearchResult]) -> str:
     return "\n\n---\n\n".join(parts)
 
 
-async def generate_response(query: str, results: list[SearchResult]) -> str:
+async def generate_response(
+    query: str,
+    results: list[SearchResult],
+    history: list[Message],
+) -> str:
     context = _build_context(results)
     user_message = f"Context:\n{context}\n\nQuestion: {query}"
 
+    messages = [{"role": "system", "content": _SYSTEM_PROMPT}]
+    for msg in history:
+        messages.append({"role": msg.role, "content": msg.content})
+    messages.append({"role": "user", "content": user_message})
+
     resp = await _client.chat.completions.create(
         model=settings.llm_model,
-        messages=[
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": user_message},
-        ],
+        messages=messages,
         max_tokens=settings.llm_max_tokens,
         temperature=settings.llm_temperature,
     )
