@@ -10,14 +10,9 @@ app = FastAPI(title="IaC AI Agent", version="1.0.0")
 
 
 def _callbacks() -> list:
-    if not (settings.langfuse_public_key and settings.langfuse_secret_key):
+    if not settings.langfuse_public_key:
         return []
-    return [CallbackHandler(
-        public_key=settings.langfuse_public_key,
-        secret_key=settings.langfuse_secret_key,
-        host=settings.langfuse_host,
-        trace_name="iac-query",
-    )]
+    return [CallbackHandler(public_key=settings.langfuse_public_key)]
 
 
 def _format_context(docs) -> str:
