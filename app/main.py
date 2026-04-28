@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException
-from langfuse.callback import CallbackHandler
+from langfuse.langchain import CallbackHandler
 
 from .chain import rag_chain, rewrite_chain, to_lc_messages
 from .config import settings
