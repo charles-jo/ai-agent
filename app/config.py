@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     llm_max_tokens: int = 1024
     llm_temperature: float = 0.1
 
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_host: str = "https://gh-langfuse.camdvr.org"
+
     class Config:
         env_file = ".env"
 
