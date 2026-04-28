@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 
-from .llm import generate_response
+from .llm import generate_response, rewrite_query
 from .models import QueryRequest, QueryResponse
 from .search import hybrid_search
 
@@ -15,7 +15,8 @@ async def health():
 @app.post("/query", response_model=QueryResponse)
 async def query(request: QueryRequest):
     try:
-        results = await hybrid_search(request.query, request.top_k)
+        search_query = await rewrite_query(request.query, request.history)
+        results = await hybrid_search(search_query, request.top_k)
         if not results:
             raise HTTPException(status_code=404, detail="No relevant documents found.")
         answer = await generate_response(request.query, results, request.history)

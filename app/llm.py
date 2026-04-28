@@ -11,6 +11,29 @@ _SYSTEM_PROMPT = (
     "Be concise and accurate. If the context does not contain enough information, say so."
 )
 
+_REWRITE_PROMPT = (
+    "You are a search query optimizer. "
+    "Given a conversation history and a follow-up question, rewrite the question as a "
+    "standalone, specific search query suitable for a vector database. "
+    "Output only the rewritten query, nothing else."
+)
+
+
+async def rewrite_query(query: str, history: list[Message]) -> str:
+    if not history:
+        return query
+    turns = "\n".join(f"{m.role}: {m.content}" for m in history)
+    resp = await _client.chat.completions.create(
+        model=settings.llm_model,
+        messages=[
+            {"role": "system", "content": _REWRITE_PROMPT},
+            {"role": "user", "content": f"Conversation:\n{turns}\n\nFollow-up: {query}"},
+        ],
+        max_tokens=64,
+        temperature=0.0,
+    )
+    return resp.choices[0].message.content.strip()
+
 
 def _build_context(results: list[SearchResult]) -> str:
     parts = []
