@@ -63,7 +63,7 @@ def _rrf(
         payloads.setdefault(pid, hit.payload or {})
 
     ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-    return [(pid, score, payloads[pid]) for pid, score, _ in zip(ranked, [s for _, s in ranked], range(top_k))][:top_k]
+    return [(pid, score, payloads[pid]) for pid, score in ranked[:top_k]]
 
 
 async def hybrid_search(query: str, top_k: int) -> list[SearchResult]:
