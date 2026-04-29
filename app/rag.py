@@ -14,7 +14,7 @@ _llm = ChatOpenAI(
     temperature=settings.llm_temperature,
 )
 
-rewrite_chain = (
+query_rewriter = (
     ChatPromptTemplate.from_messages([
         ("system",
          "You are a search query optimizer. Given a conversation history and a follow-up question, "
@@ -22,12 +22,12 @@ rewrite_chain = (
          "Output only the rewritten query, nothing else."),
         MessagesPlaceholder("history"),
         ("human", "{query}"),
-    ])
-    | _llm
-    | StrOutputParser()
-)
+    ]).with_config(run_name="build_prompt_with_history")
+    | _llm.with_config(run_name="call_llm")
+    | StrOutputParser().with_config(run_name="parse_json_into_plain_text")
+).with_config(run_name="rewrite_query")
 
-rag_chain = (
+answer_generator = (
     ChatPromptTemplate.from_messages([
         ("system",
          "You are an expert IaC assistant. Answer using only the provided context. "
@@ -35,10 +35,10 @@ rag_chain = (
          "Context:\n{context}"),
         MessagesPlaceholder("history"),
         ("human", "{query}"),
-    ])
-    | _llm
-    | StrOutputParser()
-)
+    ]).with_config(run_name="build_prompt")
+    | _llm.with_config(run_name="call_llm")
+    | StrOutputParser().with_config(run_name="parse_json_into_plain_text")
+).with_config(run_name="generate_answer")
 
 
 def to_lc_messages(history: list[Message]) -> list:
