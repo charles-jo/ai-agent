@@ -23,7 +23,7 @@ _embeddings = OpenAIEmbeddings(
 )
 
 
-def _bm25_sparse(text: str) -> tuple[list[int], list[float]]:
+def _compute_sparse_vector(text: str) -> tuple[list[int], list[float]]:
     tf = Counter(re.findall(r"[a-z0-9_\-\.]+", text.lower()))
     indices, values, seen = [], [], set()
     for token, freq in tf.items():
@@ -35,7 +35,7 @@ def _bm25_sparse(text: str) -> tuple[list[int], list[float]]:
     return indices, values
 
 
-def _rrf_merge(dense_hits: list, sparse_hits: list, top_k: int, k: int = 60) -> list[tuple[str, float, dict]]:
+def _reciprocal_rank_fusion(dense_hits: list, sparse_hits: list, top_k: int, k: int = 60) -> list[tuple[str, float, dict]]:
     scores: dict[str, float] = {}
     payloads: dict[str, dict] = {}
     for rank, hit in enumerate(dense_hits):
@@ -50,7 +50,7 @@ def _rrf_merge(dense_hits: list, sparse_hits: list, top_k: int, k: int = 60) -> 
     return [(pid, score, payloads[pid]) for pid, score in ranked[:top_k]]
 
 
-class HybridQdrantRetriever(BaseRetriever):
+class HybridContextRetriever(BaseRetriever):
     top_k: int = settings.search_top_k
 
     def _get_relevant_documents(self, query: str, *, run_manager: CallbackManagerForRetrieverRun) -> list[Document]:
@@ -60,7 +60,7 @@ class HybridQdrantRetriever(BaseRetriever):
         self, query: str, *, run_manager: AsyncCallbackManagerForRetrieverRun
     ) -> list[Document]:
         dense_vec = await _embeddings.aembed_query(query)
-        sparse_indices, sparse_values = _bm25_sparse(query)
+        sparse_indices, sparse_values = _compute_sparse_vector(query)
 
         dense_result, sparse_result = await asyncio.gather(
             _qdrant.query_points(
@@ -87,5 +87,5 @@ class HybridQdrantRetriever(BaseRetriever):
                     "score": round(score, 4),
                 },
             )
-            for _, score, payload in _rrf_merge(dense_result.points, sparse_result.points, self.top_k)
+            for _, score, payload in _reciprocal_rank_fusion(dense_result.points, sparse_result.points, self.top_k)
         ]
