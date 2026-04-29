@@ -5,13 +5,13 @@ from fastapi import FastAPI, HTTPException
 from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
 
+from .chain import rag_chain, rewrite_chain, to_lc_messages
 from .config import settings
 from .models import (
     ChatCompletionChoice, ChatCompletionRequest, ChatCompletionResponse,
     ChatMessage, Message, QueryRequest, QueryResponse, SearchResult,
 )
-from .rag import answer_generator, query_rewriter, to_lc_messages
-from .retriever import HybridContextRetriever
+from .retriever import HybridQdrantRetriever
 
 app = FastAPI(title="IaC AI Agent", version="1.0.0")
 
@@ -37,20 +37,20 @@ def _format_context(docs) -> str:
     )
 
 
-async def _execute_pipeline(query: str, history: list[Message], top_k: int = settings.search_top_k):
+async def _run_pipeline(query: str, history: list[Message], top_k: int = settings.search_top_k):
     config = {"callbacks": _callbacks()}
     lc_history = to_lc_messages(history)
-    retriever = HybridContextRetriever(top_k=top_k)
+    retriever = HybridQdrantRetriever(top_k=top_k)
 
     search_query = query
     if lc_history:
-        search_query = await query_rewriter.ainvoke(
+        search_query = await rewrite_chain.ainvoke(
             {"query": query, "history": lc_history}, config=config
         )
 
     docs = await retriever.ainvoke(search_query, config=config)
 
-    answer = await answer_generator.ainvoke(
+    answer = await rag_chain.ainvoke(
         {"query": query, "context": _format_context(docs), "history": lc_history},
         config=config,
     ) if docs else None
@@ -66,7 +66,7 @@ async def health():
 @app.post("/query", response_model=QueryResponse)
 async def query(request: QueryRequest):
     try:
-        answer, docs = await _execute_pipeline(request.query, request.history, request.top_k)
+        answer, docs = await _run_pipeline(request.query, request.history, request.top_k)
         if not docs:
             raise HTTPException(status_code=404, detail="No relevant documents found.")
         return QueryResponse(
@@ -108,7 +108,7 @@ async def chat_completions(request: ChatCompletionRequest):
             if m.role in ("user", "assistant")
         ]
 
-        answer, docs = await _execute_pipeline(last.content, history)
+        answer, docs = await _run_pipeline(last.content, history)
         if not docs:
             answer = "I couldn't find relevant information in the knowledge base."
 
