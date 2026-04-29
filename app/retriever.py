@@ -3,9 +3,7 @@ import hashlib
 import re
 from collections import Counter
 
-from langchain_core.callbacks import AsyncCallbackManagerForRetrieverRun, CallbackManagerForRetrieverRun
 from langchain_core.documents import Document
-from langchain_core.retrievers import BaseRetriever
 from langchain_openai import OpenAIEmbeddings
 from opentelemetry import trace
 from qdrant_client import AsyncQdrantClient
@@ -73,15 +71,11 @@ async def _search_sparse(sparse_indices: list[int], sparse_values: list[float], 
         )
 
 
-class HybridContextRetriever(BaseRetriever):
-    top_k: int = settings.search_top_k
+class HybridContextRetriever:
+    def __init__(self, top_k: int = settings.search_top_k):
+        self.top_k = top_k
 
-    def _get_relevant_documents(self, query: str, *, run_manager: CallbackManagerForRetrieverRun) -> list[Document]:
-        raise NotImplementedError("Use ainvoke for async retrieval")
-
-    async def _aget_relevant_documents(
-        self, query: str, *, run_manager: AsyncCallbackManagerForRetrieverRun
-    ) -> list[Document]:
+    async def retrieve(self, query: str) -> list[Document]:
         with _tracer.start_as_current_span("embed_question"):
             dense_vec = await _embeddings.aembed_query(query)
 

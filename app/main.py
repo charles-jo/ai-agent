@@ -4,6 +4,7 @@ import uuid
 from fastapi import FastAPI, HTTPException
 from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
+from opentelemetry import trace
 
 from .config import settings
 from .models import (
@@ -14,6 +15,7 @@ from .rag import answer_generator, query_rewriter, to_lc_messages
 from .retriever import HybridContextRetriever
 
 app = FastAPI(title="IaC AI Agent", version="1.0.0")
+_tracer = trace.get_tracer("ai-agent")
 
 # Langfuse v4: must initialize a client before CallbackHandler can use it.
 # Reads LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY, LANGFUSE_HOST from env.
@@ -48,7 +50,8 @@ async def _execute_pipeline(query: str, history: list[Message], top_k: int = set
             {"query": query, "history": lc_history}, config=config
         )
 
-    docs = await retriever.ainvoke(search_query, config=config)
+    with _tracer.start_as_current_span("HybridContextRetriever"):
+        docs = await retriever.retrieve(search_query)
 
     answer = await answer_generator.ainvoke(
         {"query": query, "context": _format_context(docs), "history": lc_history},
