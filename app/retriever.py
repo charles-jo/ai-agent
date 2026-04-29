@@ -7,6 +7,7 @@ from langchain_core.callbacks import AsyncCallbackManagerForRetrieverRun, Callba
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 from langchain_openai import OpenAIEmbeddings
+from opentelemetry import trace
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import SparseVector
 
@@ -21,6 +22,7 @@ _embeddings = OpenAIEmbeddings(
     api_key=settings.vllm_api_key,
     check_embedding_ctx_length=False,
 )
+_tracer = trace.get_tracer("ai-agent")
 
 
 def _compute_sparse_vector(text: str) -> tuple[list[int], list[float]]:
@@ -50,6 +52,27 @@ def _reciprocal_rank_fusion(dense_hits: list, sparse_hits: list, top_k: int, k: 
     return [(pid, score, payloads[pid]) for pid, score in ranked[:top_k]]
 
 
+async def _search_dense(dense_vec: list[float], top_k: int):
+    with _tracer.start_as_current_span("search_dense_vectors"):
+        return await _qdrant.query_points(
+            collection_name=settings.dense_collection,
+            query=dense_vec,
+            limit=top_k * 2,
+            with_payload=True,
+        )
+
+
+async def _search_sparse(sparse_indices: list[int], sparse_values: list[float], top_k: int):
+    with _tracer.start_as_current_span("search_sparse_keywords"):
+        return await _qdrant.query_points(
+            collection_name=settings.sparse_collection,
+            query=SparseVector(indices=sparse_indices, values=sparse_values),
+            limit=top_k * 2,
+            with_payload=True,
+            using="sparse",
+        )
+
+
 class HybridContextRetriever(BaseRetriever):
     top_k: int = settings.search_top_k
 
@@ -59,23 +82,14 @@ class HybridContextRetriever(BaseRetriever):
     async def _aget_relevant_documents(
         self, query: str, *, run_manager: AsyncCallbackManagerForRetrieverRun
     ) -> list[Document]:
-        dense_vec = await _embeddings.aembed_query(query)
+        with _tracer.start_as_current_span("embed_question"):
+            dense_vec = await _embeddings.aembed_query(query)
+
         sparse_indices, sparse_values = _compute_sparse_vector(query)
 
         dense_result, sparse_result = await asyncio.gather(
-            _qdrant.query_points(
-                collection_name=settings.dense_collection,
-                query=dense_vec,
-                limit=self.top_k * 2,
-                with_payload=True,
-            ),
-            _qdrant.query_points(
-                collection_name=settings.sparse_collection,
-                query=SparseVector(indices=sparse_indices, values=sparse_values),
-                limit=self.top_k * 2,
-                with_payload=True,
-                using="sparse",
-            ),
+            _search_dense(dense_vec, self.top_k),
+            _search_sparse(sparse_indices, sparse_values, self.top_k),
         )
 
         return [
