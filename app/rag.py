@@ -24,7 +24,7 @@ query_rewriter = (
         ("human", "{query}"),
     ]).with_config(run_name="build_prompt_with_history")
     | _llm.with_config(run_name="call_llm")
-    | StrOutputParser().with_config(run_name="parse_output")
+    | StrOutputParser().with_config(run_name="parse_json_into_plain_text")
 ).with_config(run_name="rewrite_query")
 
 answer_generator = (
@@ -37,7 +37,7 @@ answer_generator = (
         ("human", "{query}"),
     ]).with_config(run_name="build_prompt")
     | _llm.with_config(run_name="call_llm")
-    | StrOutputParser().with_config(run_name="parse_output")
+    | StrOutputParser().with_config(run_name="parse_json_into_plain_text")
 ).with_config(run_name="generate_answer")
 
 
